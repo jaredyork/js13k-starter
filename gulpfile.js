@@ -4,6 +4,7 @@ const gulp        = require('gulp');
 const del         = require('del');
 const browserSync = require('browser-sync');
 const watch       = require('gulp-watch');
+const zip = require('gulp-zip');
 const util = require('gulp-util');
 var fs = require('fs');
 
@@ -61,10 +62,18 @@ gulp.task('build', ['clean'], function() {
     return runSequence(buildTaskList);
 });
 
+gulp.task('zip', function() {
+    return gulp.src('./www/**')
+    .pipe(zip('game.zip'))
+    .pipe(gulp.dest('./dist'));
+});
+
 //BrowserSync
 gulp.task('browser-sync', function() {
     browserSync.init({
-        proxy: config.vhost
+        server: {
+            baseDir: "./www"
+        }
     });
 });
 
