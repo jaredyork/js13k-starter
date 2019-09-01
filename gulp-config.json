@@ -15,7 +15,7 @@
             }
         },
         "views": {
-            "source": ["views/**/*.html"],
+            "source": ["views/**/*"],
             "destination": "",
             "minifyHTML": true
         },

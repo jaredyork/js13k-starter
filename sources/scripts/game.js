@@ -241,7 +241,7 @@
   w=a.width;
   h=a.height;
   mapw=40*2;
-  maph=32 * 10;
+  maph=(32 * 3)+6;
   x=a.getContext('2d', { alpha: !1 });
   x.imageSmoothingEnabled=!1;
   x.mozImageSmoothingEnabled=!1;
@@ -263,14 +263,22 @@
   spwnDelay=300;
   spwnTick=0;
   n=noise;
-  noise.seed(rint(0,6000));
-
+  mseed=rint(0,6000);
+  seeds=[];
+  for (var i=0;i<10;i++) {
+    seeds.push(rint(0,6000));
+  }
+  noise.seed(mseed);
+  hasMusic=false;
 
   ir='images/';
 
   rock=lc('rock','.png');
   rockblue=lc('rockblue','.png');
+  oiron=lc('oiron','.png');
   metal=lc('metal','.png');
+  bedrock=lc('bedrock','.png');
+  ladder=lc('ladder','.png');
   tnt=lc('tnt','.png','.png');
   bg_rocks=lc('bg_rock','.png');
   bg_stars=lc('bg_stars','.png');
@@ -281,6 +289,24 @@
   player_drilling=lc('playerdown','.png');
   plasma_ball=lc('plasmaball','.png');
   oortbug=lc('oortbug','.png');
+
+  function music() {
+    with(new AudioContext)
+    with(G=createGain())
+    for(i in D=[24,,19,,24,,,,24,,,,24,,21,,24,,,,24,,,,24,,20,,24,,,,24,,,,24,,21,,24,,,,24,,,,24])
+    with(createOscillator())
+    if(D[i])
+    connect(G),G.connect(destination),start(i*.2),frequency.setValueAtTime(440*1.06**(13-D[i]),i*.2),gain.setValueAtTime(1,i*.2),gain.setTargetAtTime(.0001,i*.2+.18,.005),stop(i*.2+.19)
+    setTimeout(function() {
+      music();
+    }, 10000);
+  }
+  if (hasMusic) {
+    music();
+  }
+
+  function drill() {
+  }
 
   function rint(min, max) {
       min = Math.ceil(min);
@@ -508,7 +534,7 @@
       this.y=y;
     }
 
-    getTile() {
+    getTile(arr) {
 
       var tile = null;
 
@@ -517,7 +543,7 @@
     
       if (x >= 0 && x < mapw &&
           y >= 0 && y < maph) {
-        tile = tls[x][y];
+        tile = arr[x][y];
       }
 
       return tile;
@@ -551,6 +577,8 @@
       t.vxm=1; // velocity multiplier
       t.sd=99999;
       t.st=0;
+      t.ammo=0;
+      t.iron=0;
       t.cheatmode=!1;
       t.anim=new Anim(2,0,8);
     }
@@ -564,10 +592,6 @@
           t.vy = 0;
         }
 
-        if (t.drlg) {
-          t.vy = 5;
-        }
-
         if (t.dsh) {
           t.vxm=2;
           t.anim.d=4;
@@ -575,6 +599,10 @@
         else {
           t.vxm=1;
           t.anim.d=8;
+        }
+
+        if (t.drlg) {
+          t.vy = 5;
         }
 
         t.vx *= t.fric;
@@ -830,15 +858,15 @@
       case 1: {
 
         for(xp=0;xp<btls.length;xp++) {
-          prln=Math.floor(sap(xp/100) + rint(4,6));
+          prln=Math.floor(sap(xp/100) + 32);
 
-          for(yp=prln;yp>-maph;yp--){
+          for(yp=prln;yp>0;yp--){
 
             canAdd=!0;
             
             if (canAdd) {
-              //tl=new BgTile(xp*bs,yp*bs,[bg_stars],0);
-              //btls[xp][yp] = tl;
+              tl=new BgTile(xp*bs,yp*bs,[bg_stars],0);
+              btls[xp][yp] = tl;
             }
             
 
@@ -858,20 +886,30 @@
         }
 
         for ( xp=0;xp<mapw;xp++) {
-          prln=Math.floor(sap(xp/100) + rint(4,6));
+          prln=Math.floor(sap(xp/100) + 32);
 
-          for ( yp=prln;yp<maph;yp++) {
+          for ( yp=prln;yp<maph+6;yp++) {
 
             canAdd=!0;
             d=10;
             d2=20;
+            d3=20;
             texture = rock;
 
+            noise.seed(seeds[0]);
             p2 = noise.perlin2(xp/d2, yp/d2);
 
             if (p2 > 0.05 && p2 < 0.2) {
               texture = rockblue;
             }
+
+            noise.seed(seeds[1]);
+            p3 = noise.perlin2(xp/d3, yp/d3);
+            if (p3 > 0.025 && p3 < 0.1) {
+              texture = oiron;
+            }
+
+            noise.seed(mseed);
 
             if (yp > prln+(Math.random()*5)+3 && noise.perlin2(xp/d,yp/d) > 0.1) {
               canAdd = !1;
@@ -883,6 +921,13 @@
 
               // lt=new LightingTile(xp*16,yp*16);
               //lt_tls.push(lt);
+            }
+
+            if (yp > maph - rint(6,8)) {
+              tls[xp][yp] = new T(xp*ts,yp*ts,bedrock,{
+                canFlip:!0,
+                destructible:!1
+              });
             }
 
           }
@@ -902,7 +947,8 @@
                 canFlip:false,
                 destructible:false
               });
-              console.log(tls[Math.floor(mapw/2)][y-1]);
+              tls[spcshipx][y].destructible=false;
+
               p.x=spcshipx*ts;
               p.y=(y-1)*ts;
               foundTile = true;
@@ -982,24 +1028,59 @@
           p.st++;
         }
         else {
-          // player shoot
-          var vx=0;
-          if (p.fc == "L") {
-            vx = -5;
-          }
-          else {
-            vx = 5;
-          }
-          var proj = new Proj(p.x,p.y,plasma_ball,vx,0,true);
-          mobs.push(proj);
+          if (p.ammo>0&&!p.drlg) {
+            // player shoot
+            var vx=0;
+            if (p.fc == "L") {
+              vx = -5;
+            }
+            else {
+              vx = 5;
+            }
+            var proj = new Proj(p.x,p.y+7,plasma_ball,vx,0,true);
+            mobs.push(proj);
 
-          p.st=0;
+            p.ammo--;
+
+            p.st=0;
+          }
         }
-
       }
       else {
         p.dsh=!1;
         p.st=p.sd-1;
+      }
+
+      if (k[38]) { // up
+        var ftl = p.getTile(ftls);
+        var tlp = p.getTilePos();
+
+        if (ftl) {
+          if (ftl.i == ladder) {
+            p.vy=-2;
+          }
+        }
+
+        var placey=null;
+        for (var y = tlp.y; y > 0; y--) {
+
+          if (tlp.x >= 0 && tlp.x < mapw &&
+              tlp.y >= 0 && tlp.y < maph) {
+            if (tls[tlp.x][y] == null && !placey) {
+              placey=y;
+            }
+          }
+        }
+
+        if (placey && p.iron>0) {
+          if (!ftls[tlp.x][placey]) {
+            ftls[tlp.x][placey] = new T(tlp.x*ts,placey*ts,ladder,{
+              canFlip:!1
+            });
+
+            p.iron--;
+          }
+        }
       }
 
       if (k[69]) {
@@ -1031,7 +1112,7 @@
                 if (mt.x > 0 && mt.x < mapw*ts &&
                     mt.y > 0 && mt.y < maph*ts) {
 
-                  if (mob.getTile() == null) {
+                  if (mob.getTile(tls) == null) {
                     mobs.push(mob);
                   }
                 }
@@ -1058,7 +1139,12 @@
           if (p.vy > 0 && p.y + p.h < mob.y + (mob.h/2)){
             p.jmp = !0;
             p.gnd = !1;
-            p.vy = -p.spd * 2;
+            if (p.jmp) {
+              p.vy = -p.spd * 4;
+            }
+            else {
+              p.vy = -p.spd * 2;
+            }
             
             mobs.splice(i, 1);
           }
@@ -1100,18 +1186,26 @@
             if (tl !== null) {
               d = colCheck(p, tl);
 
+              var dmg = 0.025;
+
+              if (tl.i == rockblue) {
+                dmg = 0.1;
+              }
+
               if (d === "l" || d === "r") {
                 p.vx = 0;
                 p.jmp = !1;
-
-                tl.damage(0.05);
+                p.anim.d=9999;
+                drill();
+                tl.damage(dmg);
 
               } else if (d === "bs") {
                 p.gnd = !0;
                 p.jmp = !1;
 
                 if (p.drlg) {
-                  tl.damage(0.05);
+                  drill();
+                  tl.damage(dmg);
                 }
               } else if (d === "t") {
                 p.vy *= -1;
@@ -1133,6 +1227,14 @@
               }
               
               if (tl.dmg >= 1) {
+
+                if (tl.i == rockblue) {
+                  p.ammo += 1;
+                }
+                else if (tl.i == oiron) {
+                  p.iron += 1;
+                }
+
                 tls[xp][yp] = null;
               }
 
@@ -1170,7 +1272,7 @@
   }
   function drw(x){
 
-    x.clearRect(0,0,w,h);
+    x.clearRect(0,0,w,h - 4);
 
     cam.begin();
 
@@ -1245,6 +1347,18 @@
     }
 
     cam.end();
+
+    x.drawImage(plasma_ball, 32, 32, 32, 32);
+    x.drawImage(oiron, 32, 96, 32, 32);
+
+    x.save();
+
+    x.font = "bold 48px monospace";
+    x.fillStyle = "#fff";
+    x.fillText(ps[0].ammo, 78, 64);
+    x.fillText(ps[0].iron, 78, 128);
+
+    x.restore();
 
   }
   function ml() {
