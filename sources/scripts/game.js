@@ -260,6 +260,7 @@
   ts=32;//tile size
   bs=32;//bg tile size
   mobs=[];
+  projs=[];
   spwnDelay=300;
   spwnTick=0;
   n=noise;
@@ -679,6 +680,8 @@
       super(x,y);
       var t = this;
       t.i=i;
+      t.w=i.width;
+      t.h=i.height;
       t.vx=vx;
       t.vy=vy;
       t.friendly=friendly;
@@ -1038,7 +1041,7 @@
               vx = 5;
             }
             var proj = new Proj(p.x,p.y+7,plasma_ball,vx,0,true);
-            mobs.push(proj);
+            projs.push(proj);
 
             p.ammo--;
 
@@ -1173,6 +1176,19 @@
             }
           }
         }
+
+        for ( j = 0; j < projs.length; j++) {
+          var d = colCheck(projs[j], mob);
+
+          if (d) {
+            mobs.splice(i, 1);
+            projs.splice(j, 1);
+          }
+        }
+      }
+
+      for (i = 0; i < projs.length; i++) {
+        projs[i].updt();
       }
 
       for ( xp = sc.lf; xp < sc.lf + sc.w; xp++) {
@@ -1253,7 +1269,7 @@
           if (b(btls[xp][yp])) {
             bg=btls[xp][yp];
 
-            bg.x += p.vx * 0.5;
+            bg.x += p.vx * 0.75;
 
             if (dim==0){
               bg.i=bg.is[0];
@@ -1344,6 +1360,10 @@
 
     for(i=0;i<mobs.length;i++){
       mobs[i].drw(x);
+    }
+
+    for (i=0;i<projs.length;i++){
+      projs[i].drw(x);
     }
 
     cam.end();
