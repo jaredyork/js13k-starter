@@ -21,6 +21,7 @@
     "gulp-check-filesize": "^2.0.1",
     "gulp-inline-source": "^3.2.0",
     "gulp-terser": "latest",
+    "gulp-uglify-es": "latest",
     "gulp-zip": "^4.0.0",
     "gulp-advzip": "latest"
   }

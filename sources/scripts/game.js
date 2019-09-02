@@ -238,74 +238,72 @@
 
   a.width=480;
   a.height=640;
-  w=a.width;
-  h=a.height;
-  mapw=40*2;
-  maph=(32 * 3)+6;
-  x=a.getContext('2d', { alpha: !1 });
+  var w=a.width;
+  var h=a.height;
+  var mapw=40*2;
+  var maph=(32 * 3)+6;
+  var x=a.getContext('2d', { alpha: !1 });
   x.imageSmoothingEnabled=!1;
   x.mozImageSmoothingEnabled=!1;
-  cam=new Camera(x);
-  ps = [];
-  gvty=0.2;
+  var cam=new Camera(x);
+  var ps = [];
+  var gvty=0.2;
   function fs(c){x.fillStyle=c;}
-  screen=1;
-  k=[];//inpt
-  btls = a2(mapw, maph, null);
-  tls=a2(mapw, maph, null);
-  al_tls = a2(mapw, maph, null);//always loaded
-  ftls = a2(mapw, maph, null);
-  ts=32;//tile size
-  bs=32;//bg tile size
-  mobs=[];
-  parts=[];
-  projs=[];
-  spwnDelay=300;
-  spwnTick=0;
-  n=noise;
-  mseed=rint(0,6000);
-  seeds=[];
+  var screen=1;
+  var k=[];//inpt
+  var btls = a2(mapw, maph, null);
+  var tls=a2(mapw, maph, null);
+  var al_tls = a2(mapw, maph, null);//always loaded
+  var ftls = a2(mapw, maph, null);
+  var ts=32;//tile size
+  var bs=32;//bg tile size
+  var mobs=[];
+  var parts=[];
+  var projs=[];
+  var spwnDelay=300;
+  var spwnTick=0;
+  var n=noise;
+  var mseed=rint(0,6000);
+  var seeds=[];
   for (var i=0;i<10;i++) {
     seeds.push(rint(0,6000));
   }
   noise.seed(mseed);
-  hasMusic=false;
+  var hasMusic=false;
 
-  ir='images/';
+  var ir='images/';
 
-  grass=lc('grass','.png');
-  dirt=lc('dirt','.png');
-  rock=[];
+  var grass=lc('grass','.png');
+  var dirt=lc('dirt','.png');
+  var rock=[];
   for (var i = 0; i < 3; i++) {
     rock.push(lc('rock'+i,'.png'));
   }
-  rockblue=lc('rockblue','.png');
-  oiron=lc('oiron','.png');
-  metal=lc('metal','.png');
-  lavarock=lc('lavarock','.png');
-  bedrock=lc('bedrock','.png');
-  ladder=lc('ladder','.png');
-  lava=lc('lava','.png');
-  tnt=lc('tnt','.png');
-  ecrystal=lc('ecrystal','.png');
-  bg_rocks=[];
+  var rockblue=lc('rockblue','.png');
+  var oiron=lc('oiron','.png');
+  var metal=lc('metal','.png');
+  var lavarock=lc('lavarock','.png');
+  var bedrock=lc('bedrock','.png');
+  var ladder=lc('ladder','.png');
+  var lava=lc('lava','.png');
+  var tnt=lc('tnt','.png');
+  var ecrystal=lc('ecrystal','.png');
+  var bg_rocks=[];
   for (var i = 0; i < 3; i++) {
     bg_rocks.push(lc('bg_rock'+i,'.png'));
   }
-  bg_lavarock=lc('bg_lavarock','.png');
-  bg_stars=lc('bg_stars','.png');
-  bg_tl_rocks=lc('bg_tl_rocks','.png');
-  bg_mach=lc('bg_mach','.png');
-  spcship=lc('spcship','.png');
-  player=lc('player','.png');
-  player_drilling=lc('playerdown','.png');
-  plasma_ball=lc('plasmaball','.png');
-  oortbug=lc('oortbug','.png');
-  heart=lc('heart','.png');
-  heartempty=lc('heartempty','.png');
-  lifecanister=lc('lifecanister','.png');
+  var bg_lavarock=lc('bg_lavarock','.png');
+  var bg_stars=lc('bg_stars','.png');
+  var spcship=lc('spcship','.png');
+  var player=lc('player','.png');
+  var player_drilling=lc('playerdown','.png');
+  var plasma_ball=lc('plasmaball','.png');
+  var oortbug=lc('oortbug','.png');
+  var heart=lc('heart','.png');
+  var heartempty=lc('heartempty','.png');
+  var lifecanister=lc('lifecanister','.png');
 
-  worldTemplates = [
+  var worldTemplates = [
     {
       name: "grass",
       rockIndex: 0,
@@ -329,21 +327,6 @@
     }
   ];
   worldTemplate = worldTemplates[rint(0, worldTemplates.length - 1)];
-
-  function music() {
-    with(new AudioContext)
-    with(G=createGain())
-    for(i in D=[24,,19,,24,,,,24,,,,24,,21,,24,,,,24,,,,24,,20,,24,,,,24,,,,24,,21,,24,,,,24,,,,24])
-    with(createOscillator())
-    if(D[i])
-    connect(G),G.connect(destination),start(i*.2),frequency.setValueAtTime(440*1.06**(13-D[i]),i*.2),gain.setValueAtTime(1,i*.2),gain.setTargetAtTime(.0001,i*.2+.18,.005),stop(i*.2+.19)
-    setTimeout(function() {
-      music();
-    }, 10000);
-  }
-  if (hasMusic) {
-    music();
-  }
 
   function drill() {
   }
