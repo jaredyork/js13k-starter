@@ -236,8 +236,8 @@
     
   }).call(this);
 
-  a.width=640;
-  a.height=800;
+  a.width=480;
+  a.height=640;
   w=a.width;
   h=a.height;
   mapw=40*2;
@@ -250,16 +250,15 @@
   gvty=0.2;
   function fs(c){x.fillStyle=c;}
   screen=1;
-  dim=0;
   k=[];//inpt
   btls = a2(mapw, maph, null);
   tls=a2(mapw, maph, null);
   al_tls = a2(mapw, maph, null);//always loaded
   ftls = a2(mapw, maph, null);
-  lt_tls = [];//lighting
   ts=32;//tile size
   bs=32;//bg tile size
   mobs=[];
+  parts=[];
   projs=[];
   spwnDelay=300;
   spwnTick=0;
@@ -274,14 +273,26 @@
 
   ir='images/';
 
-  rock=lc('rock','.png');
+  grass=lc('grass','.png');
+  dirt=lc('dirt','.png');
+  rock=[];
+  for (var i = 0; i < 3; i++) {
+    rock.push(lc('rock'+i,'.png'));
+  }
   rockblue=lc('rockblue','.png');
   oiron=lc('oiron','.png');
   metal=lc('metal','.png');
+  lavarock=lc('lavarock','.png');
   bedrock=lc('bedrock','.png');
   ladder=lc('ladder','.png');
-  tnt=lc('tnt','.png','.png');
-  bg_rocks=lc('bg_rock','.png');
+  lava=lc('lava','.png');
+  tnt=lc('tnt','.png');
+  ecrystal=lc('ecrystal','.png');
+  bg_rocks=[];
+  for (var i = 0; i < 3; i++) {
+    bg_rocks.push(lc('bg_rock'+i,'.png'));
+  }
+  bg_lavarock=lc('bg_lavarock','.png');
   bg_stars=lc('bg_stars','.png');
   bg_tl_rocks=lc('bg_tl_rocks','.png');
   bg_mach=lc('bg_mach','.png');
@@ -290,6 +301,34 @@
   player_drilling=lc('playerdown','.png');
   plasma_ball=lc('plasmaball','.png');
   oortbug=lc('oortbug','.png');
+  heart=lc('heart','.png');
+  heartempty=lc('heartempty','.png');
+  lifecanister=lc('lifecanister','.png');
+
+  worldTemplates = [
+    {
+      name: "grass",
+      rockIndex: 0,
+      hasGrass: true,
+      hasDirt: true,
+      hasSky: true
+    },
+    {
+      name: "blue",
+      rockIndex: 1,
+      hasGrass: !rint(0, 1),
+      hasDirt: !rint(0, 1),
+      hasSky: !rint(0, 1)
+    },
+    {
+      name: "sand",
+      rockIndex: 2,
+      hasGrass: !1,
+      hasDirt: !1,
+      hasSky: !rint(0, 1)
+    }
+  ];
+  worldTemplate = worldTemplates[rint(0, worldTemplates.length - 1)];
 
   function music() {
     with(new AudioContext)
@@ -307,6 +346,12 @@
   }
 
   function drill() {
+  }
+
+  function clamp(val, min, max) {
+    if (val < min) return min;
+    if (val > max) return max;
+    return val;
   }
 
   function rint(min, max) {
@@ -358,6 +403,17 @@
         }
     }
     return cold;
+  }
+
+  function colRect(rect1, rect2) {
+    if (rect1.x < rect2.x + rect2.w &&
+      rect1.x + rect1.w > rect2.x &&
+      rect1.y < rect2.y + rect2.h &&
+      rect1.y + rect1.h > rect2.y) {
+       // collision detected!
+       return true;
+    }
+    return false;
   }
 
   function sgf(value, cellSize) {
@@ -422,7 +478,9 @@
     constructor(x,y,i,args){
       args=args||{
         canFlip:true,
-        destructible:true
+        destructible:true,
+        collidable:true,
+        damage: null
       };
       var t = this;
       t.x=x;
@@ -434,7 +492,9 @@
       t.vy = 0;
       t.hf=0;
       t.vf=0;
+      t.collidable=args.collidable;
       t.destructible=args.destructible;
+      t.damage=args.damage;
       if (args.canFlip) {
         t.hf=rint(0,1);
         t.vf=rint(0,1);
@@ -444,7 +504,7 @@
       t.rCol='#000';
       t.dmg = 0;
     }
-    damage(amt) {
+    hit(amt) {
       if (this.dmg < 1 && this.destructible) {
         this.dmg += amt;
       }
@@ -492,7 +552,7 @@
     }
   }
 
-  class TNT extends T{
+  class TNT extends FgTile{
     constructor(x,y,i){
       super(x,y,i);
       this.d=0;
@@ -510,29 +570,11 @@
     }
   }
 
-  class LightingTile{
-    constructor(x, y) {
-      this.x=x;
-      this.y=y;
-      this.w=ts;
-      this.h=ts;
-      this.alpha=1;
-    }
-    drw(x) {
-      var t = this;
-      x.save();
-      x.fillStyle='#000';
-      x.fillRect(t.x,t.y,t.w,t.h);
-      x.strokeStyle='#000';
-      x.strokeRect(t.x, t.y,t.w,t.h);
-      x.restore();
-    }
-  }
-
   class E {
     constructor(x,y) {
       this.x=x;
       this.y=y;
+      this.hp=1;
     }
 
     getTile(arr) {
@@ -559,6 +601,33 @@
     }
   }
 
+  class Part extends E {
+    constructor(x,y,i) {
+      super(x, y);
+      var t=this;
+      t.i=i;
+      t.w=4;
+      t.h=4;
+      t.vx=0;
+      t.vy=0;
+      t.frc=0.8;
+      t.gnd=!1;
+    }
+
+    updt() {
+      var t=this;
+
+      if (t.gnd) {
+        t.vy = 0;
+      }
+
+      t.vx *= t.fric;
+      if (t.vy < 10) {
+        t.vy += gvty;
+      }
+    }
+  }
+
   class P extends E {
     constructor(x,y,i) {
       super(x, y);
@@ -578,10 +647,35 @@
       t.vxm=1; // velocity multiplier
       t.sd=99999;
       t.st=0;
+      t.ecrystal=0;
       t.ammo=0;
       t.iron=0;
+      t.maxhp=3;
+      t.hp=3;
+      t.dead=false;
+      t.invinc=!1;
+      t.invincTick=0;
+      t.invincDelay=120;
+      t.vis=true;
       t.cheatmode=!1;
       t.anim=new Anim(2,0,8);
+    }
+
+    damage(amt) {
+
+      if (!this.invinc) {
+        if (this.hp - amt > 0) {
+          this.hp -= amt;
+        }
+        else {
+          this.hp = 0;
+          this.dead = true;
+        }
+
+        this.invincTick = 0;
+        this.invinc = true;
+      }
+
     }
 
     updt() {
@@ -600,10 +694,6 @@
         else {
           t.vxm=1;
           t.anim.d=8;
-        }
-
-        if (t.drlg) {
-          t.vy = 5;
         }
 
         t.vx *= t.fric;
@@ -627,6 +717,24 @@
       t.y += t.vy;
 
       t.anim.updt();
+
+      if (t.invinc) {
+        if (t.invincTick < t.invincDelay) {
+          t.invincTick++;
+
+          t.vis=!t.vis;
+        }
+        else {
+          t.invinc = false;
+          t.vis = true;
+
+          t.invincTick = 0;
+        }
+      }
+
+      if (t.dead) {
+        t.vis = false;
+      }
 
       /*
       if (t.x >= w-t.i.width) {
@@ -653,7 +761,7 @@
         overrideDraw = !0;
       }
 
-      if (!overrideDraw) {
+      if (!overrideDraw && this.vis) {
         if (this.fc == 'L') {
 
           x.translate(this.x, this.y);
@@ -669,7 +777,6 @@
           x.drawImage(this.idrlg, this.x, this.y);
         }
       }
-
 
       x.restore();
     }
@@ -866,24 +973,36 @@
           for(yp=prln;yp>0;yp--){
 
             canAdd=!0;
+
+            var skyTexture = bg_stars;
             
             if (canAdd) {
-              tl=new BgTile(xp*bs,yp*bs,[bg_stars],0);
+              tl=new BgTile(xp*bs,yp*bs,[skyTexture],0);
+
+              if (worldTemplate.hasSky) {
+                tl.iVis=!1;
+                tl.rVis=!0;
+                tl.rCol="#4488FF";
+              }
+
               btls[xp][yp] = tl;
             }
-            
-
           }
 
           for(yp=prln;yp<maph;yp++){
 
             canAdd=!0;
-            
-            if (canAdd) {
-              tl=new BgTile(xp*bs,yp*bs,[bg_rocks,bg_mach],0);
-              btls[xp][yp] = tl;
+
+            texture = bg_rocks[worldTemplate.rockIndex];
+
+            if (yp > maph-(maph/4)) {
+              texture = bg_lavarock;
             }
             
+            if (canAdd) {
+              tl=new BgTile(xp*bs,yp*bs,[texture],0);
+              btls[xp][yp] = tl;
+            }
 
           }
         }
@@ -897,19 +1016,46 @@
             d=10;
             d2=20;
             d3=20;
-            texture = rock;
+            texture = rock[worldTemplate.rockIndex];
+            args = {
+              canFlip:true,
+              destructible:true,
+              collidable:true,
+              damage:null
+            };
+
+            if (yp < prln + 6) {
+              texture = dirt;
+
+              if (yp == prln) {
+                texture = grass;
+                args.canFlip = false;
+              }
+            }
+
+            if (yp > maph-(maph/4)) {
+              texture = lavarock;
+            }
 
             noise.seed(seeds[0]);
             p2 = noise.perlin2(xp/d2, yp/d2);
 
             if (p2 > 0.05 && p2 < 0.2) {
               texture = rockblue;
+
+              if (yp > maph-(maph/4)) {
+                texture = lava;
+                args.destructible=false;
+                args.collidable=false;
+                args.damage=3;
+              }
             }
 
             noise.seed(seeds[1]);
             p3 = noise.perlin2(xp/d3, yp/d3);
-            if (p3 > 0.025 && p3 < 0.1) {
+            if (p3 > 0.025 && p3 < 0.3) {
               texture = oiron;
+              args.collidable=true;
             }
 
             noise.seed(mseed);
@@ -919,22 +1065,21 @@
             }
             
             if (canAdd) {
-              tl=new T(xp*ts,yp*ts,texture);
+              tl=new T(xp*ts,yp*ts,texture,args);
               tls[xp][yp] = tl;
-
-              // lt=new LightingTile(xp*16,yp*16);
-              //lt_tls.push(lt);
             }
 
             if (yp > maph - rint(6,8)) {
               tls[xp][yp] = new T(xp*ts,yp*ts,bedrock,{
                 canFlip:!0,
-                destructible:!1
+                destructible:!1,
+                collidable:!0
               });
             }
 
           }
         }
+
 
         var spcshipx = Math.floor(mapw/2);
 
@@ -948,7 +1093,8 @@
             if (!foundTile) {
               tls[spcshipx][y - 1] = new T(spcshipx*ts,(y-1)*ts,spcship,{
                 canFlip:false,
-                destructible:false
+                destructible:false,
+                collidable:true
               });
               tls[spcshipx][y].destructible=false;
 
@@ -956,6 +1102,63 @@
               p.y=(y-1)*ts;
               foundTile = true;
             }
+          }
+        }
+
+        // Place energy crystals
+        var chunkSize = 3;
+        var chunkSizeInTilesWidth = Math.floor(mapw/chunkSize);
+        var chunkSizeInTilesHeight = Math.floor(maph/chunkSize);
+
+        for (cpx=0;cpx<chunkSize;cpx++) {
+          for (cpy=0;cpy<chunkSize;cpy++) {
+
+            var crystalTileLocations = [];
+
+            // location in tiles of the current "chunk"
+            var left = (cpx*chunkSizeInTilesWidth);
+            var top = (cpy*chunkSizeInTilesHeight);
+
+            // Look through the chunk and get locations just above ground
+            for (px=left;px<left+chunkSizeInTilesWidth;px++) {
+              for(py=top;py<top+chunkSizeInTilesHeight;py++) {
+
+                if (tls[px][py]) {
+                  if (py - 1 > 0 && py - 1 < maph - 10) {
+                    if (!tls[px][py - 1]) {
+                      
+                      crystalTileLocations.push({ x: px, y: py - 1 });
+                    }
+                  }
+                }
+
+              }
+            }
+
+
+            if (crystalTileLocations.length === 0) {
+              crystalTileLocations.push({ x: rint(left,left+chunkSizeInTilesWidth), y: rint(top,top+chunkSizeInTilesHeight) });
+            }
+
+            var crystalLocIndex = rint(0,crystalTileLocations.length - 1);
+            var loc = crystalTileLocations[crystalLocIndex];
+            crystalTileLocations.splice(crystalLocIndex, 1);
+
+            //console.log("placed energy crystal at: " + loc.x + "," + loc.y);
+            tls[loc.x][loc.y] = new T(loc.x*ts,loc.y*ts,ecrystal, {
+              canFlip: !1,
+              destructible: !0,
+              collidable:!0
+            });
+
+            /*
+            var canisterLoc = crystalTileLocations[rint(0,crystalTileLocations.length - 1)];
+            tls[canisterLoc.x][canisterLoc.y] = new T(canisterLoc.x*ts,canisterLoc.y,lifecanister, {
+              canFlip: !1,
+              destructible: !0,
+              collidable:!0
+            });*/
+
           }
         }
 
@@ -976,118 +1179,121 @@
 
       p = ps[0];
 
-      if (k[90]) { // jump
-        if (!p.cheatmode) {
-          if (!p.jmp && p.gnd) {
-            p.jmp = !0;
-            p.gnd = !1;
-            p.vy = -4;
+      if (!p.dead) {
+        if (k[90]) { // jump
+          if (!p.cheatmode) {
+            if (!p.jmp && p.gnd) {
+              p.jmp = !0;
+              p.gnd = !1;
+              p.vy = -4;
+            }
+          }
+
+          if (p.cheatmode) {
+            if (p.vy > -p.spd) {
+              p.vy--;
+            }
           }
         }
 
-        if (p.cheatmode) {
-          if (p.vy > -p.spd) {
-            p.vy--;
+        if (k[40]) { // down
+          p.drlg = !0;
+
+          if (p.cheatmode) {
+            if (p.vy < p.spd) {
+              p.vy++;
+            }
           }
-        }
-      }
 
-      if (k[40]) { // down
-        p.drlg = !0;
-
-        if (p.cheatmode) {
-          if (p.vy < p.spd) {
-            p.vy++;
-          }
-        }
-
-      }
-      else {
-        p.drlg = !1;
-      }
-
-      if (k[39]) { // right
-        
-        if (p.vx < p.spd * p.vxm) {
-          p.vx++;
-          p.fc = "R";
-        }
-
-      }
-
-      if (k[37]) { // left
-
-        if (p.vx > -p.spd * p.vxm) {
-          p.vx--;
-          p.fc = "L";
-        }
-      }
-
-      if (k[88]) {
-
-        p.dsh=!0;
-
-        if (p.st < p.sd) {
-          p.st++;
         }
         else {
-          if (p.ammo>0&&!p.drlg) {
-            // player shoot
-            var vx=0;
-            if (p.fc == "L") {
-              vx = -5;
-            }
-            else {
-              vx = 5;
-            }
-            var proj = new Proj(p.x,p.y+7,plasma_ball,vx,0,true);
-            projs.push(proj);
+          p.drlg = !1;
+        }
 
-            p.ammo--;
+        if (k[39]) { // right
+          
+          if (p.vx < p.spd * p.vxm) {
+            p.vx++;
+            p.fc = "R";
+          }
 
-            p.st=0;
+        }
+
+        if (k[37]) { // left
+
+          if (p.vx > -p.spd * p.vxm) {
+            p.vx--;
+            p.fc = "L";
+          }
+        }
+
+        if (k[88]) {
+
+          p.dsh=!0;
+
+          if (p.st < p.sd) {
+            p.st++;
+          }
+          else {
+            if (p.ammo>0&&!p.drlg) {
+              // player shoot
+              var vx=0;
+              if (p.fc == "L") {
+                vx = -5;
+              }
+              else {
+                vx = 5;
+              }
+              var proj = new Proj(p.x,p.y+7,plasma_ball,vx,0,true);
+              projs.push(proj);
+
+              p.ammo--;
+
+              p.st=0;
+            }
+          }
+        }
+        else {
+          p.dsh=!1;
+          p.st=p.sd-1;
+        }
+
+        if (k[38]) { // up
+          var ftl = p.getTile(ftls);
+          var tlp = p.getTilePos();
+
+          if (ftl) {
+            if (ftl.i == ladder) {
+              p.vy=-2;
+            }
+          }
+
+          var placey=null;
+          for (var y = tlp.y; y > 0; y--) {
+
+            if (tlp.x >= 0 && tlp.x < mapw &&
+                tlp.y >= 0 && tlp.y < maph) {
+              if (tls[tlp.x][y] == null && !placey) {
+                placey=y;
+              }
+            }
+          }
+
+          if (placey && p.iron>0) {
+            if (!ftls[tlp.x][placey]) {
+              ftls[tlp.x][placey] = new T(tlp.x*ts,placey*ts,ladder,{
+                canFlip:!1
+              });
+
+              p.iron--;
+            }
           }
         }
       }
       else {
-        p.dsh=!1;
-        p.st=p.sd-1;
-      }
-
-      if (k[38]) { // up
-        var ftl = p.getTile(ftls);
-        var tlp = p.getTilePos();
-
-        if (ftl) {
-          if (ftl.i == ladder) {
-            p.vy=-2;
-          }
-        }
-
-        var placey=null;
-        for (var y = tlp.y; y > 0; y--) {
-
-          if (tlp.x >= 0 && tlp.x < mapw &&
-              tlp.y >= 0 && tlp.y < maph) {
-            if (tls[tlp.x][y] == null && !placey) {
-              placey=y;
-            }
-          }
-        }
-
-        if (placey && p.iron>0) {
-          if (!ftls[tlp.x][placey]) {
-            ftls[tlp.x][placey] = new T(tlp.x*ts,placey*ts,ladder,{
-              canFlip:!1
-            });
-
-            p.iron--;
-          }
-        }
-      }
-
-      if (k[69]) {
-        dim=dim==0?1:0;
+        setTimeout(function() {
+          document.location.reload(true);
+        }, 3000);
       }
 
       for ( i=0;i<ps.length;i++) {
@@ -1138,6 +1344,7 @@
             p.x < mob.x + mob.w &&
             p.y + p.h > mob.y &&
             p.y < mob.y + mob.h) {
+
         
           if (p.vy > 0 && p.y + p.h < mob.y + (mob.h/2)){
             p.jmp = !0;
@@ -1150,6 +1357,13 @@
             }
             
             mobs.splice(i, 1);
+          }
+          else {
+            var d = colRect(p, mob);
+
+            if (d) {
+              p.damage(1);
+            }
           }
 
         }
@@ -1200,41 +1414,70 @@
             tl = tls[xp][yp];
               
             if (tl !== null) {
-              d = colCheck(p, tl);
 
-              var dmg = 0.025;
+              if (tl.i == lava) {
+                var args = {
+                  canFlip:true,
+                  destructible:false,
+                  collidable:false
+                };
+                
+                if (xp-1 > 0) {
+                  if (!tls[xp-1][yp]) {
+                    tls[xp-1][yp] = new T((xp-1)*ts,yp*ts,lava,args);
+                  }
+                }
 
-              if (tl.i == rockblue) {
-                dmg = 0.1;
+                if (xp+1 < mapw) {
+                  if (!tls[xp+1][yp]) {
+                    tls[xp+1][yp] = new T((xp+1)*ts,yp*ts,lava,args);
+                  }
+                }
+
+                if (yp+1 < maph) {
+                  if (!tls[xp][yp+1]) {
+                    tls[xp][yp+1] = new T(xp*ts,(yp+1)*ts,lava,args);
+                  }
+                }
               }
 
-              if (d === "l" || d === "r") {
-                p.vx = 0;
-                p.jmp = !1;
-                p.anim.d=9999;
-                drill();
-                tl.damage(dmg);
+              if (tl.collidable) {
+                d = colCheck(p, tl);
 
-              } else if (d === "bs") {
-                p.gnd = !0;
-                p.jmp = !1;
+                var dmg = 0.05;
 
-                if (p.drlg) {
+                if (tl.i == rockblue) {
+                  dmg = 0.5;
+                }
+
+                if (d === "l" || d === "r") {
+                  p.vx = 0;
+                  p.jmp = !1;
+                  p.anim.d=9999;
                   drill();
-                  tl.damage(dmg);
+                  tl.hit(dmg);
+
+                } else if (d === "bs") {
+                  p.gnd = !0;
+                  p.jmp = !1;
+
+                  if (p.drlg) {
+                    drill();
+                    tl.hit(dmg);
+                  }
+
+                  if (p.vy > 8) {
+                    p.damage(Math.round(p.vy * 0.1));
+                  }
+
+                } else if (d === "t") {
+                  p.vy *= -1;
                 }
-              } else if (d === "t") {
-                p.vy *= -1;
               }
 
-              if (dim==0){
-                if (tl.i == metal) {
-                  tl.i = rock;
-                }
-              }
-              else if (dim==1) {
-                if (tl.i == rock) {
-                  tl.i = metal;
+              if (tl.damage) {
+                if (colRect(p, tl)) {
+                  p.damage(tl.damage);
                 }
               }
               
@@ -1248,7 +1491,12 @@
                   p.ammo += 1;
                 }
                 else if (tl.i == oiron) {
-                  p.iron += 1;
+                  var amt = 1;
+                  amt = rint(0,100)>80?rint(2,3):amt;
+                  p.iron += amt;
+                }
+                else if (tl.i == ecrystal) {
+                  p.ecrystal += 1;
                 }
 
                 tls[xp][yp] = null;
@@ -1259,8 +1507,13 @@
         }
       }
 
+      ps[0].x = clamp(ps[0].x, 0, (mapw*ts)-ps[0].w);
+      ps[0].y = clamp(ps[0].y, 0, (maph*ts)-ps[0].h);
+
       ppos= { x: ps[0].x, y: ps[0].y };
       cam.moveTo(ppos.x, ppos.y);
+      cam.vp.lf = clamp(cam.vp.lf, 0, (mapw*ts) - cam.vp.w);
+      cam.vp.tp = clamp(cam.vp.tp, 0, (maph*ts) - cam.vp.h);
 
       for ( xp = 0; xp < btls.length; xp++) {
 
@@ -1269,17 +1522,8 @@
           if (b(btls[xp][yp])) {
             bg=btls[xp][yp];
 
-            bg.x += p.vx * 0.75;
-
-            if (dim==0){
-              bg.i=bg.is[0];
-            }
-            else if (dim==1) {
-              if (yp > 0) {
-                if (bg.is.length>1) {
-                  bg.i=bg.is[1];
-                }
-              }
+            if (cam.vp.lf > 0 && cam.vp.lf < (mapw*ts)-cam.vp.w) {
+              bg.x += p.vx * 0.75;
             }
           }
         }
@@ -1368,17 +1612,43 @@
 
     cam.end();
 
-    x.drawImage(plasma_ball, 32, 32, 32, 32);
-    x.drawImage(oiron, 32, 96, 32, 32);
+    for (var i = 0; i < ps[0].maxhp; i++) {
+      x.drawImage(heartempty, 32 + (i * 32), 32, 32, 32);
+      if (i < ps[0].hp) {
+        x.drawImage(heart, 32 + (i * 32), 32, 32, 32);
+      }
+    }
 
-    x.save();
+    var inv = [
+      { icon: ecrystal, text: ps[0].ecrystal },
+      { icon: plasma_ball, text: ps[0].ammo },
+      { icon: oiron, text: ps[0].iron }
+    ];
 
-    x.font = "bold 48px monospace";
-    x.fillStyle = "#fff";
-    x.fillText(ps[0].ammo, 78, 64);
-    x.fillText(ps[0].iron, 78, 128);
+    for (var i = 0; i < inv.length; i++) {
+      var item = inv[i];
+      x.drawImage(item.icon, 32, 80 + (i * 48), 32, 32);
 
-    x.restore();
+      x.save();
+      x.font = "bold 24px monospace";
+      x.fillStyle = "#fff";
+      x.fillText(item.text, 72, 106 + (i * 48));
+      x.restore();
+    }
+
+    if (ps[0].dead) {
+      x.save();
+      x.fillStyle = "#111";
+      x.fillRect(0, 240, w, 128);
+      x.fillStyle = "#fff";
+      x.font = "32px monospace";
+      var youdied="You Died. :c";
+      x.fillText(youdied, (w/2)-x.measureText(youdied).width/2, 310);
+      x.font = "14px monospace";
+      var torestart="A new game will start in a sec...";
+      x.fillText(torestart, (w/2)-x.measureText(torestart).width/2, 340);
+      x.restore();
+    }
 
   }
   function ml() {
