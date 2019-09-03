@@ -27,16 +27,11 @@ module.exports = function() {
                 })
             }))
             .pipe(concat(concatConfig.filename))
-            .pipe(terser(terserConfig))
+            .pipe(gulpif(util.env.production, terser(terserConfig).on('error', function(err) {
+                util.log(util.colors.bgRed('Terser error:'), util.colors.red(err));
+            })))
             .pipe(gulp.dest(config.destinationRoot + concatConfig.destination))
             .pipe(gulpif(isWatching, browserSync.stream({once: true})))
             .pipe(notify('Successfully compiled JS'));
     });
 };
-
-
-/*
-.pipe(gulpif(util.env.production, terser(terserConfig).on('error', function(err) {
-    util.log(util.colors.bgRed('Terser error:'), util.colors.red(err));
-})))
-*/
