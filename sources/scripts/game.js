@@ -18,11 +18,11 @@
                 new G(1,0,1),new G(-1,0,1),new G(1,0,-1),new G(-1,0,-1),
                 new G(0,1,1),new G(0,-1,1),new G(0,1,-1),new G(0,-1,-1)];
 
-    player = [];
-    while (player.length<300) {
-      player.push(rint(0,255));
+    var p = [];
+    while (p.length<300) {
+      p.push(rint(0,255));
     }
-    player = [...new Set(player)];
+    p = [...new Set(p)];
     // To remove the need for index wrapping, double the permutation table length
     perm = new Array(512);
     gP = new Array(512);
@@ -43,9 +43,9 @@
       for( i = 0; i < 256; i++) {
         v=0;
         if (i & 1) {
-          v = player[i] ^ (seed & 255);
+          v = p[i] ^ (seed & 255);
         } else {
-          v = player[i] ^ ((seed>>8) & 255);
+          v = p[i] ^ ((seed>>8) & 255);
         }
 
         perm[i] = perm[i + 256] = v;
@@ -236,32 +236,40 @@
     
   }).call(this);
 
-  a.width=480;
-  a.height=640;
+  a.width=window.innerWidth;
+  a.height=window.innerHeight;
   var w=a.width;
   var h=a.height;
   var mapw=40*2;
   var maph=(32 * 3)+6;
-  var x=a.getContext('2d', { alpha: !1 });
-  x.imageSmoothingEnabled=!1;
-  x.mozImageSmoothingEnabled=!1;
-  var cam=new Camera(x);
-  var ps = [];
-  var gvty=0.2;
-  function fs(c){x.fillStyle=c;}
+  var ctx=a.getContext('2d', { alpha: !1 });
+  ctx.imageSmoothingEnabled=false;
+  ctx.mozImageSmoothingEnabled=false;
+  ctx.msImageSmoothingEnabled=false;
+  var camera=new Camera(ctx);
+  camera.vp.w = w;
+  camera.vp.h = h;
+  var players = [];
+  var gravity=0.2;
   var screen=1;
   var k=[];//inpt
-  var btls = a2(mapw, maph, null);
-  var tls=a2(mapw, maph, null);
-  var al_tls = a2(mapw, maph, null);//always loaded
-  var ftls = a2(mapw, maph, null);
-  var ts=32;//tile size
-  var bs=32;//bg tile size
+  var bgTiles = a2(mapw, maph, null);
+  var tiles=a2(mapw, maph, null);
+  var alwaysLoadedTiles = a2(mapw, maph, null);//always loaded
+  var fgTiles = a2(mapw, maph, null);
+  var tileSize=16;//tile size
+  var bgTileSize=16;//bg tile size
+  var bgParallax = 0.25;
+  var spaceship = null;
+  var hasLaunched = false;
+  var clouds=[];
   var mobs=[];
   var parts=[];
   var projs=[];
-  var spwnDelay=300;
-  var spwnTick=0;
+  var spawnDelay=300;
+  var spawnTick=0;
+  var spawnCloudDelay = 60;
+  var spawnCloudTick = 0;
   var n=noise;
   var mseed=rint(0,6000);
   var seeds=[];
@@ -269,39 +277,40 @@
     seeds.push(rint(0,6000));
   }
   noise.seed(mseed);
-  var hasMusic=false;
 
   var ir='images/';
 
-  var grass=lc('grass','.png');
-  var dirt=lc('dirt','.png');
+  var grass=lc('grass','.gif');
+  var dirt=lc('dirt','.gif');
   var rock=[];
   for (var i = 0; i < 3; i++) {
-    rock.push(lc('rock'+i,'.png'));
+    rock.push(lc('rock'+i,'.gif'));
   }
-  var rockblue=lc('rockblue','.png');
-  var oiron=lc('oiron','.png');
-  var metal=lc('metal','.png');
-  var lavarock=lc('lavarock','.png');
-  var bedrock=lc('bedrock','.png');
+  var rockblue=lc('rockblue','.gif');
+  var oiron=lc('oiron','.gif');
+  var lavarock=lc('lavarock','.gif');
+  var bedrock=lc('bedrock','.gif');
   var ladder=lc('ladder','.png');
-  var lava=lc('lava','.png');
-  var tnt=lc('tnt','.png');
+  var lava=lc('lava','.gif');
   var ecrystal=lc('ecrystal','.png');
   var bg_rocks=[];
   for (var i = 0; i < 3; i++) {
-    bg_rocks.push(lc('bg_rock'+i,'.png'));
+    bg_rocks.push(lc('bg_rock'+i,'.gif'));
   }
-  var bg_lavarock=lc('bg_lavarock','.png');
-  var bg_stars=lc('bg_stars','.png');
+  var bg_lavarock=lc('bg_lavarock','.gif');
+  var bg_stars=lc('bg_stars','.gif');
   var spcship=lc('spcship','.png');
   var player=lc('player','.png');
   var player_drilling=lc('playerdown','.png');
-  var plasma_ball=lc('plasmaball','.png');
+  var plasmaball=lc('plasmaball','.png');
   var oortbug=lc('oortbug','.png');
   var heart=lc('heart','.png');
   var heartempty=lc('heartempty','.png');
-  var lifecanister=lc('lifecanister','.png');
+  var lifecanister=lc('lifecanister','.gif');
+  var cloud_imgs=[];
+  for (var i = 0; i < 1; i++) {
+    cloud_imgs.push(lc('cloud'+i,'.png'));
+  }
 
   var worldTemplates = [
     {
@@ -326,15 +335,22 @@
       hasSky: !rint(0, 1)
     }
   ];
-  worldTemplate = worldTemplates[rint(0, worldTemplates.length - 1)];
-
-  function drill() {
+  worldTemplate = worldTemplates[rint(0, worldTemplates.length - 1)];  
+  function getRandomHex() {
+    var chars = [1,2,3,4,5,6,7,8,9,"A","B","C","D","E","F"];
+    var code = "#";
+    for (var i = 0; i < 6; i++) {
+      code += chars[rint(0, chars.length - 1)];
+    }
+    return code;
   }
+  worldTemplate.skyColor = getRandomHex();
 
-  function distance(p1,p2){
-    var dx = p2.x-p1.x;
-    var dy = p2.y-p1.y;
-    return Math.sqrt(dx*dx + dy*dy);
+  function distance(x1, y1, x2, y2){
+    var a = x1 - x2;
+    var b = y1 - y2;
+    
+    return Math.hypot(a, b);
   }
 
   function clamp(val, min, max) {
@@ -349,7 +365,17 @@
       return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
+  function tileWithinMap(x, y) {
+    if (x >= 0 && x < mapw &&
+        y >= 0 && y < maph) {
+      
+      return true;
+    }
+    return false;
+  }
+
   function colCheck(shapeA, shapeB) {
+    
     // get the vectors to check against
     vX = (shapeA.x + (shapeA.w / 2)) - (shapeB.x + (shapeB.w / 2)),
         vY = (shapeA.y + (shapeA.h / 2)) - (shapeB.y + (shapeB.h / 2)),
@@ -357,7 +383,7 @@
         hWidths = (shapeA.w / 2) + (shapeB.w / 2),
         hHeights = (shapeA.h / 2) + (shapeB.h / 2),
         cold = null;
-    // if the x and y vector are less than the half width or half height, they we must be inside the object, causing a collision
+    // if the x and y vector are less than the half w or half h, they we must be inside the object, causing a collision
     if (Math.abs(vX) < hWidths && Math.abs(vY) < hHeights) {
         // figures out on which side we are colliding (tp, bottom, lf, or rt)
         oX = hWidths - Math.abs(vX),
@@ -444,7 +470,7 @@
       t.d=d;
       t.on=!0;
     }
-    updt(){
+    update(){
       var t = this;
       if (t.on) {
         if(t.t<t.d){
@@ -463,7 +489,7 @@
     }
   }
 
-  class T{
+  class Tile{
     constructor(x,y,i,args){
       args=args||{
         canFlip:true,
@@ -475,12 +501,12 @@
       t.x=x;
       t.y=y;
       t.i=i;
-      t.w=ts;
-      t.h=ts;
+      t.w=tileSize;
+      t.h=tileSize;
       t.vx = 0;
       t.vy = 0;
-      t.hf=0;
-      t.vf=0;
+      t.hf=0; // horizontal flip
+      t.vf=0; // vertical flip
       t.collidable=args.collidable;
       t.destructible=args.destructible;
       t.damage=args.damage;
@@ -496,85 +522,90 @@
     hit(amt) {
       if (this.dmg < 1 && this.destructible) {
         this.dmg += amt;
+
+        if (rint(0, 100) > 80) {
+          var part = new Part(
+            rint(this.x - 2, this.x + this.w + 2),
+            rint(this.y - 2, this.y + this.h + 2),
+            4,
+            4,
+            this.i
+          );
+          parts.push(part);
+        }
       }
     }
-    drw(x){
+    update() {
+      var t = this;
+
+      t.x += t.vx;
+      t.y += t.vy;
+    }
+    draw(ctx){
       var t = this;
       if (t.iVis && !t.rVis) {
-        x.save();
-        x.translate(t.x, t.y);
-        x.scale(!t.hf?1:-1, !t.vf?1:-1);
-        x.drawImage(t.i, -Math.sign(t.hf)*t.w, -Math.sign(t.vf)*t.h, t.w, t.h);
-        x.restore();
+        ctx.save();
+        ctx.translate(t.x, t.y);
+        ctx.scale(!t.hf?1:-1, !t.vf?1:-1);
+        ctx.drawImage(t.i, -Math.sign(t.hf)*t.w, -Math.sign(t.vf)*t.h, t.w, t.h);
+        ctx.restore();
       }
       //drawImage(this.i,this.x,this.y, 1, this.r);
 
       if (t.rVis && !t.isVis) {
-        x.save();
-        x.fillStyle = t.rCol;
-        x.fillRect(t.x,t.y,t.w,t.h);
-        x.strokeStyle=t.rCol;
-        x.strokeRect(t.x,t.y,t.w,t.h);
-        x.restore();
+        ctx.save();
+        ctx.fillStyle = t.rCol;
+        ctx.fillRect(t.x,t.y,t.w,t.h);
+        ctx.strokeStyle=t.rCol;
+        ctx.strokeRect(t.x,t.y,t.w,t.h);
+        ctx.restore();
       }
 
       if (t.dmg > 0) {
-        x.save();
-        x.fillStyle = t.rCol;
-        x.globalAlpha = t.dmg * 0.65;
-        x.fillRect(t.x,t.y,t.w,t.h);
-        x.restore();
+        ctx.save();
+        ctx.fillStyle = t.rCol;
+        ctx.globalAlpha = t.dmg * 0.65;
+        ctx.fillRect(t.x,t.y,t.w,t.h);
+        ctx.strokeStyle = t.rCol;
+        ctx.strokeRect(t.x,t.y,t.w,t.h);
+        ctx.restore();
       }
     }
   }
 
-  class BgTile extends T {
+  class BgTile extends Tile {
     constructor(x, y, is, i) {
       super(x, y, is[i]);
       this.is = is;
     }
   }
 
-  class FgTile extends T {
+  class FgTile extends Tile {
     constructor(x, y, i) {
       super(x, y, i);
     }
   }
 
-  class TNT extends FgTile{
-    constructor(x,y,i){
-      super(x,y,i);
-      this.d=0;
-      this.t=0;
-      this.ce=!1;//can explode
-    }
-    updt(){
-      if(this.t<this.d){
-        this.t++;
-      }
-      else{
-        this.ce=!0;
-        this.t=0;
-      }
-    }
-  }
-
   class E {
     constructor(x,y) {
-      this.x=x;
-      this.y=y;
-      this.hp=1;
+      var t = this;
+      t.x=x;
+      t.y=y;
+      t.ax = 0;
+      t.ay = 0;
+      t.vx = 0;
+      t.vy = 0;
+      t.hp=1;
     }
 
     getTile(arr) {
 
       var tile = null;
 
-      var x = sgf(this.x, ts) / ts;
-      var y = sgf(this.y, ts) / ts;
+      var x = sgf(this.x, tileSize) / tileSize;
+      var y = sgf(this.y, tileSize) / tileSize;
     
-      if (x >= 0 && x < mapw &&
-          y >= 0 && y < maph) {
+      if (tileWithinMap(x, y)) {
         tile = arr[x][y];
       }
 
@@ -583,36 +614,86 @@
 
     getTilePos() {
 
-      var x = sgf(this.x, ts) / ts;
-      var y = sgf(this.y, ts) / ts;
+      var x = sgf(this.x, tileSize) / tileSize;
+      var y = sgf(this.y, tileSize) / tileSize;
 
       return {x:x,y:y};
     }
   }
 
+  class Cloud extends E {
+    constructor(x,y,w,h,i) {
+      super(x, y);
+      var t = this;
+      t.i = i;
+      t.w = w;
+      t.h = h;
+      t.vx = -rint(0.1, 2);
+      t.canDestroy = !1;
+    }
+
+    update() {
+      var t = this;
+      t.x += t.vx;
+      t.y += t.vy;
+    }
+
+    draw(ctx) {
+      var t = this;
+      ctx.drawImage(t.i, t.x, t.y, t.w, t.h);
+    }
+  }
+
   class Part extends E {
-    constructor(x,y,i) {
+    constructor(x,y,w,h,i,col) {
       super(x, y);
       var t=this;
       t.i=i;
-      t.w=4;
-      t.h=4;
-      t.vx=0;
-      t.vy=0;
-      t.frc=0.8;
+      t.col = col;
+      t.w=w;
+      t.h=h;
+      t.delay = 90;
+      t.tick = 0;
       t.gnd=!1;
+      t.canDestroy = !1;
     }
 
-    updt() {
+    owc(d) {
+    }
+
+    update() {
       var t=this;
+
+      if (t.tick < t.delay) {
+        t.tick++;
+      }
+      else {
+        t.canDestroy = true;
+      }
 
       if (t.gnd) {
         t.vy = 0;
       }
 
-      t.vx *= t.fric;
       if (t.vy < 10) {
-        t.vy += gvty;
+        t.vy += gravity;
+      }
+
+      t.x += t.vx;
+      t.y += t.vy;
+    }
+
+    draw(ctx) {
+      var t = this;
+
+      if (t.col) {
+        ctx.save();
+        ctx.fillStyle = t.col;
+        ctx.fillRect(t.x, t.y, t.w, t.h);
+        ctx.restore();
+      }
+      else {
+        ctx.drawImage(t.i, t.x, t.y, t.w, t.h);
       }
     }
   }
@@ -645,14 +726,14 @@
       t.invinc=!1;
       t.invincTick=0;
       t.invincDelay=120;
-      t.vis=true;
+      t.visible=true;
       t.cheatmode=!1;
       t.anim=new Anim(2,0,8);
     }
 
     damage(amt) {
 
-      if (!this.invinc) {
+      if (!this.invinc && !hasLaunched) {
         if (this.hp - amt > 0) {
           this.hp -= amt;
         }
@@ -667,7 +748,7 @@
 
     }
 
-    updt() {
+    update() {
       var t=this;
       
       if (!t.cheatmode) {
@@ -687,7 +768,7 @@
 
         t.vx *= t.fric;
         if (t.vy < 10) {
-          t.vy += gvty;
+          t.vy += gravity;
         }
 
         if (Math.abs(t.vx) < 0.1 ) {
@@ -702,47 +783,52 @@
         t.vy *= t.fric;
       }
 
+      if (hasLaunched) {
+        t.vx = 0;
+        t.vy = 0;
+      }
+
       t.x += t.vx;
       t.y += t.vy;
 
-      t.anim.updt();
+      t.anim.update();
 
       if (t.invinc) {
         if (t.invincTick < t.invincDelay) {
           t.invincTick++;
 
-          t.vis=!t.vis;
+          t.visible=!t.visible;
         }
         else {
           t.invinc = false;
-          t.vis = true;
+          t.visible = true;
 
           t.invincTick = 0;
         }
       }
 
       if (t.dead) {
-        t.vis = false;
+        t.visible = false;
       }
 
       /*
-      if (t.x >= w-t.i.width) {
-        t.x = w-t.i.width;
+      if (t.x >= w-t.i.w) {
+        t.x = w-t.i.w;
       }
       else if (this.x <= 0) {
         this.x = 0;
       }
 
-      if (this.y >= h-this.i.height) {
-        this.y = h-this.i.height;
+      if (this.y >= h-this.i.h) {
+        this.y = h-this.i.h;
         this.jmp = !1;
       }*/
 
     }
 
-    drw(x) {
+    draw(ctx) {
       //drawImage(this.i,this.x,this.y,1,this.r);
-      x.save();
+      ctx.save();
 
       var overrideDraw = !1;
 
@@ -750,24 +836,24 @@
         overrideDraw = !0;
       }
 
-      if (!overrideDraw && this.vis) {
+      if (!overrideDraw && this.visible) {
         if (this.fc == 'L') {
 
-          x.translate(this.x, this.y);
-          x.scale(-1, 1);
-          x.drawImage(this.i, this.anim.f*10,0,10,16,-10, 0,10,16);
+          ctx.translate(this.x, this.y);
+          ctx.scale(-1, 1);
+          ctx.drawImage(this.i, this.anim.f*10,0,10,16,-10, 0,10,16);
         }
         else if (this.fc == 'R') {
-          x.drawImage(this.i, this.anim.f*10,0,10,16,this.x, this.y, 10, 16);
+          ctx.drawImage(this.i, this.anim.f*10,0,10,16,this.x, this.y, 10, 16);
         }
       }
       else {
-        if (this.drlg && this.idrlg !== undefined) {
-          x.drawImage(this.idrlg, this.x, this.y);
+        if (this.drlg && this.idrlg !== undefined && !hasLaunched) {
+          ctx.drawImage(this.idrlg, this.x, this.y);
         }
       }
 
-      x.restore();
+      ctx.restore();
     }
   }
 
@@ -776,23 +862,47 @@
       super(x,y);
       var t = this;
       t.i=i;
-      t.w=i.width;
-      t.h=i.height;
+      t.w=i.w;
+      t.h=i.h;
       t.vx=vx;
       t.vy=vy;
       t.friendly=friendly;
     }
 
-    updt(){
+    update(){
       var t = this;
 
       t.x += t.vx;
       t.y += t.vy;
     }
 
-    drw(x){
+    draw(ctx){
       var t = this;
-      x.drawImage(t.i, t.x, t.y);
+      ctx.drawImage(t.i, t.x, t.y);
+    }
+  }
+
+  class Spaceship extends E {
+    constructor(x, y, w, h, i) {
+      super(x, y);
+      var t = this;
+      t.w = w;
+      t.h = h;
+      t.i = i;
+    }
+
+    update() {
+      var t = this;
+      t.vx += t.ax;
+      t.vy += t.ay;
+
+      t.x += t.vx;
+      t.y += t.vy;
+    }
+
+    draw(ctx) {
+      var t = this;
+       ctx.drawImage(t.i, t.x, t.y, t.w, t.h);
     }
   }
 
@@ -816,7 +926,7 @@
       t.fr=0;
     }
 
-    baseUpdt(){
+    baseupdate(){
       var t = this;
 
       if (t.gnd) {
@@ -824,7 +934,7 @@
       }
 
       if (t.vy < 10) {
-        t.vy += gvty;
+        t.vy += gravity;
       }
 
       t.x += t.vx;
@@ -847,35 +957,35 @@
 
     }
 
-    drw(x) {
+    draw(ctx) {
       var t = this;
 
-      x.save();
+      ctx.save();
 
       if (b(t.fr)) {
-        x.filter = t.fr;
+        ctx.filter = t.fr;
       }
 
       if (t.fc == 'L') {
 
-        x.translate(t.x, t.y);
-        x.scale(-1, 1);
+        ctx.translate(t.x, t.y);
+        ctx.scale(-1, 1);
         if (t.isAnim) {
-          x.drawImage(t.i, t.frame * t.w, 0, t.w, t.h, -16, 0, t.w, t.h);
+          ctx.drawImage(t.i, t.frame * t.w, 0, t.w, t.h, -16, 0, t.w, t.h);
         }
         else {
-          x.drawImage(t.i, -10, 0, t.w, t.h);
+          ctx.drawImage(t.i, -10, 0, t.w, t.h);
         }
       }
       else if (t.fc == 'R') {
         if (t.isAnim) {
-          x.drawImage(t.i, t.frame * t.w, 0, t.w, t.h, t.x, t.y, t.w, t.h);
+          ctx.drawImage(t.i, t.frame * t.w, 0, t.w, t.h, t.x, t.y, t.w, t.h);
         }
         else {
-          x.drawImage(t.i, t.x, t.y, t.w, t.h);
+          ctx.drawImage(t.i, t.x, t.y, t.w, t.h);
         }
       }
-      x.restore();
+      ctx.restore();
     }
   }
 
@@ -892,8 +1002,8 @@
       this.fr=rint(0,1)?'hue-rotate('+rint(0,360)+'deg)':0;
     }
 
-    updt() {
-      this.baseUpdt();
+    update() {
+      this.baseupdate();
     }
 
     owc(d) {
@@ -956,8 +1066,8 @@
       }
       case 1: {
 
-        for(xp=0;xp<btls.length;xp++) {
-          prln=Math.floor(sap(xp/100) + 32);
+        for(xp=0;xp<bgTiles.length;xp++) {
+          var prln=Math.floor(sap(xp/100) + 32);
 
           for(yp=prln;yp>0;yp--){
 
@@ -965,16 +1075,10 @@
 
             var skyTexture = bg_stars;
             
-            if (canAdd) {
-              tl=new BgTile(xp*bs,yp*bs,[skyTexture],0);
+            if (canAdd && !worldTemplate.hasSky) {
+              tile=new BgTile(xp*bgTileSize,yp*bgTileSize,[skyTexture],0);
 
-              if (worldTemplate.hasSky) {
-                tl.iVis=!1;
-                tl.rVis=!0;
-                tl.rCol="#4488FF";
-              }
-
-              btls[xp][yp] = tl;
+              bgTiles[xp][yp] = tile;
             }
           }
 
@@ -989,15 +1093,15 @@
             }
             
             if (canAdd) {
-              tl=new BgTile(xp*bs,yp*bs,[texture],0);
-              btls[xp][yp] = tl;
+              tile=new BgTile(xp*bgTileSize,yp*bgTileSize,[texture],0);
+              bgTiles[xp][yp] = tile;
             }
 
           }
         }
 
         for ( xp=0;xp<mapw;xp++) {
-          prln=Math.floor(sap(xp/100) + 32);
+          var prln=Math.floor(sap(xp/100) + 32);
 
           for ( yp=prln;yp<maph+6;yp++) {
 
@@ -1055,12 +1159,12 @@
             }
             
             if (canAdd) {
-              tl=new T(xp*ts,yp*ts,texture,args);
-              tls[xp][yp] = tl;
+              tile=new Tile(xp*tileSize,yp*tileSize,texture,args);
+              tiles[xp][yp] = tile;
             }
 
             if (yp > maph - rint(6,8)) {
-              tls[xp][yp] = new T(xp*ts,yp*ts,bedrock,{
+              tiles[xp][yp] = new Tile(xp*tileSize,yp*tileSize,bedrock,{
                 canFlip:!0,
                 destructible:false,
                 collidable:!0
@@ -1073,22 +1177,25 @@
 
         var spcshipx = Math.floor(mapw/2);
 
-        player = new P(spcshipx*ts,128,player);
+        player = new P(spcshipx*tileSize,128,player);
         player.idrlg = player_drilling;
-        ps.push(player);
+        players.push(player);
 
         var foundTile = false;
         for (var y=0;y<maph;y++) {
-          if (tls[spcshipx][y] != null) {
+          if (tiles[spcshipx][y] != null) {
             if (!foundTile) {
-              tls[spcshipx][y - 1] = new T(spcshipx*ts,(y-1)*ts,spcship,{
+              tiles[spcshipx][y - 1] = new Tile(spcshipx*tileSize,(y-1)*tileSize,spcship,{
                 canFlip:false,
                 destructible:false,
                 collidable:true
               });
 
-              player.x=spcshipx*ts;
-              player.y=(y-1)*ts;
+              player.x=spcshipx*tileSize;
+              player.y=(y-1)*tileSize;
+
+              tiles[spcshipx][y].destructible = false;
+
               foundTile = true;
             }
           }
@@ -1100,7 +1207,7 @@
         var chunkSizeInTilesHeight = Math.floor(maph/chunkSize);
 
         for (cpx=0;cpx<chunkSize;cpx++) {
-          for (cpy=0;cpy<chunkSize;cpy++) {
+          for (cpy=1;cpy<chunkSize - 1;cpy++) { 
 
             var canisterTileLocations = [];
             var crystalTileLocations = [];
@@ -1113,9 +1220,9 @@
             for (px=left;px<left+chunkSizeInTilesWidth;px++) {
               for(py=top;py<top+chunkSizeInTilesHeight;py++) {
 
-                if (tls[px][py]) {
-                  if (py - 1 > 0 && py - 1 < maph - 10) {
-                    if (!tls[px][py - 1]) {
+                if (tiles[px][py] !== null) {
+                  if (py - 1 >= 0 && py - 1 < maph - 10) {
+                    if (tiles[px][py - 1] == null) {
                       
                       canisterTileLocations.push({ x: px, y: py - 1 });
                       crystalTileLocations.push({ x: px, y: py - 1 });
@@ -1125,17 +1232,16 @@
               }
             }
 
-
             if (crystalTileLocations.length === 0) {
-              crystalTileLocations.push({ x: rint(left,left+chunkSizeInTilesWidth), y: rint(top,top+chunkSizeInTilesHeight) });
+              crystalTileLocations.push({ x: left+rint(0, chunkSizeInTilesWidth), y: chunkSizeInTilesHeight });
             }
 
             var crystalLocIndex = rint(0,crystalTileLocations.length - 1);
             var loc = crystalTileLocations[crystalLocIndex];
             crystalTileLocations.splice(crystalLocIndex, 1);
 
-            //console.log("placed energy crystal at: " + loc.x + "," + loc.y);
-            tls[loc.x][loc.y] = new T(loc.x*ts,loc.y*ts,ecrystal, {
+
+            tiles[loc.x][loc.y] = new Tile(loc.x*tileSize,loc.y*tileSize,ecrystal, {
               canFlip: false,
               destructible: true,
               collidable:true
@@ -1146,12 +1252,14 @@
               canisterTileLocations.push({ x: rint(left,left+chunkSizeInTilesWidth), y: rint(top,top+chunkSizeInTilesHeight) });
             }
             
-            var canisterLoc = canisterTileLocations[rint(0,canisterTileLocations.length - 1)];
-            tls[canisterLoc.x][canisterLoc.y] = new T(canisterLoc.x*ts,canisterLoc.y*ts,lifecanister, {
-              canFlip: false,
-              destructible: true,
-              collidable:true
-            });
+            if (rint(0, 100) > 75) {
+              var canisterLoc = canisterTileLocations[rint(0,canisterTileLocations.length - 1)];
+              tiles[canisterLoc.x][canisterLoc.y] = new Tile(canisterLoc.x*tileSize,canisterLoc.y*tileSize,lifecanister, {
+                canFlip: false,
+                destructible: true,
+                collidable:true
+              });
+            }
 
           }
         }
@@ -1160,18 +1268,23 @@
       }
     }
   }
-  function updt(){
-    if (ps.length>0) {
+  function update(){
 
-      cc = { x: cam.vp.lf, y: cam.vp.tp };
-      sc = {
-        lf: sgf(cc.x, ts)/ts,
-        tp: sgf(cc.y, ts)/ts,
-        w: (sgf(cam.vp.w, ts)/ts)+2,
-        h: (sgf(cam.vp.h, ts)/ts)+2
+    if (spaceship) {
+      spaceship.update();
+    }
+
+    if (players.length>0) {
+
+      wcam = { x: camera.vp.lf, y: camera.vp.tp };
+      snc = {
+        lf: sgf(wcam.x, tileSize)/tileSize,
+        tp: sgf(wcam.y, tileSize)/tileSize,
+        w: (sgf(camera.vp.w, tileSize)/tileSize)+2,
+        h: (sgf(camera.vp.h, tileSize)/tileSize)+2
       };
 
-      player = ps[0];
+      var player = players[0];
 
       if (!player.dead) {
         if (k[90]) { // jump
@@ -1238,7 +1351,7 @@
               else {
                 vx = 5;
               }
-              var proj = new Proj(player.x,player.y+7,plasma_ball,vx,0,true);
+              var proj = new Proj(player.x,player.y+7,plasmaball,vx,0,true);
               projs.push(proj);
 
               player.ammo--;
@@ -1253,7 +1366,7 @@
         }
 
         if (k[38]) { // up
-          var ftl = player.getTile(ftls);
+          var ftl = player.getTile(fgTiles);
           var tlp = player.getTilePos();
 
           if (ftl) {
@@ -1265,17 +1378,16 @@
           var placey=null;
           for (var y = tlp.y; y > 0; y--) {
 
-            if (tlp.x >= 0 && tlp.x < mapw &&
-                tlp.y >= 0 && tlp.y < maph) {
-              if (tls[tlp.x][y] == null && !placey) {
+            if (tileWithinMap(tlp.x, tlp.y)) {
+              if (tiles[tlp.x][y] == null && !placey) {
                 placey=y;
               }
             }
           }
 
           if (placey && player.iron>0) {
-            if (!ftls[tlp.x][placey]) {
-              ftls[tlp.x][placey] = new T(tlp.x*ts,placey*ts,ladder,{
+            if (!fgTiles[tlp.x][placey]) {
+              fgTiles[tlp.x][placey] = new FgTile(tlp.x*tileSize,placey*tileSize,ladder,{
                 canFlip:!1
               });
 
@@ -1290,47 +1402,124 @@
         }, 3000);
       }
 
-      for ( i=0;i<ps.length;i++) {
-        player.updt();
+      for ( i=0;i<players.length;i++) {
+        player.update();
       }
 
 
       player.gnd = !1;
 
-      // mob spawner
-      
-      
-      if (spwnTick < spwnDelay) {
-        spwnTick++;
+      // cloud spawner
+      if (spawnCloudTick < spawnCloudDelay) {
+        spawnCloudTick++;
       }
       else {
-        for ( xp = sc.lf; xp < sc.lf + sc.w; xp++) {
-          for ( yp = sc.tp; yp < sc.tp + sc.h; yp++) {
-              
-            if (mobs.length < 10) {
-              if (rint(0,100)>98) {
-                mob = new OortBug(xp*ts,yp*ts,oortbug);
+        var cloud = new Cloud(w, rint(0, h), rint(64, 256), rint(32, 64), cloud_imgs[rint(0,cloud_imgs.length-1)]);
+        clouds.push(cloud);
 
-                mt = mob.getTilePos();
-                if (mt.x > 0 && mt.x < mapw*ts &&
-                    mt.y > 0 && mt.y < maph*ts) {
+        spawnCloudTick = 0;
+      }
 
-                  if (mob.getTile(tls) == null) {
-                    mobs.push(mob);
+      // mob spawner
+      
+      if (spawnTick < spawnDelay) {
+        spawnTick++;
+      }
+      else {
+        var locations = [];
+
+        for ( xp = snc.lf; xp < snc.lf + snc.w; xp++) {
+          for ( yp = snc.tp; yp < snc.tp + snc.h; yp++) {
+
+            if (tileWithinMap(xp, yp)) {
+              var tile = tiles[xp][yp];
+
+              if (tile != null) {
+                if (yp - 1 >= 0) {
+                  if (tiles[xp][yp - 1] == null) {
+                    locations.push({ x: xp, y: yp - 1 });
                   }
                 }
               }
             }
-
           }
         }
+
+        if (mobs.length < 200) {
+          var location = locations[rint(0, locations.length - 1)];
+
+          //if (rint(0,100)>98) {
+          if (location) {
+            if (distance(
+              player.x,
+              player.y,
+              location.x * tileSize,
+              location.y * tileSize
+            ) > 70) {
+              var mob = new OortBug(location.x*tileSize,location.y*tileSize,oortbug);
+
+              mobs.push(mob);
+            }
+          }
+          //}
+        }
       
-        spwnTick=0;
+        spawnTick=0;
+      }
+
+      clouds = clouds.filter(function(cloud) {
+        return !cloud.canDestroy;
+      });
+
+      for ( i = 0; i < clouds.length; i++) {
+        var cloud = clouds[i];
+
+        if (cloud.x < -cloud.w) {
+          cloud.canDestroy = true;
+        }
+
+        cloud.vy = -players[0].vy*bgParallax;
+
+        cloud.update();
+      }
+
+      parts = parts.filter(function(part) {
+        return !part.canDestroy
+      });
+
+      for ( i = 0; i < parts.length; i++) {
+        var part = parts[i];
+        part.update();
+
+        var tp = part.getTilePos();
+        for ( xp = tp.x - 3; xp < tp.x + 3; xp++) {
+          for ( yp = tp.y - 3; yp < tp.y + 3; yp++) {
+
+            if (tileWithinMap(xp, yp)) {
+              t = tiles[xp][yp];
+
+              if (t !== null) {
+                if (t.collidable) {
+                  d = colCheck(part, t);
+            
+                  if (d === "l" || d === "r") {
+                    part.owc(d);
+                  } else if (d === "bs") {
+                    part.gnd = !0;
+                  }
+                  else if (d === "t") {
+                    part.vy *= -1;
+                  }
+                }
+              }
+            }
+          }
+        }
       }
 
       for ( i = 0; i < mobs.length; i++) {
         mob = mobs[i];
-        mob.updt();
+        mob.update();
 
         mob.gnd = !1;
 
@@ -1340,7 +1529,7 @@
             player.y < mob.y + mob.h) {
 
         
-          if (player.vy > 0 && player.y + player.h < mob.y + (mob.h/2)){
+          if (player.vy >= 0 && player.y + player.h < mob.y + (mob.h/2)){
             player.jmp = !0;
             player.gnd = !1;
             if (player.jmp) {
@@ -1366,19 +1555,20 @@
         for ( xp = tp.x - 3; xp < tp.x + 3; xp++) {
           for ( yp = tp.y - 3; yp < tp.y + 3; yp++) {
 
-            if (xp >= 0 && xp < mapw &&
-                yp >= 0 && yp < maph) {
-              t = tls[xp][yp];
+            if (tileWithinMap(xp, yp)) {
+              t = tiles[xp][yp];
 
               if (t !== null) {
-                d = colCheck(mob, t);
-          
-                if (d === "l" || d === "r") {
-                  mob.owc(d);
-                  mob.jmp = !1;
-                } else if (d === "bs") {
-                  mob.gnd = !0;
-                  mob.jmp = !1;
+                if (t.collidable) {
+                  d = colCheck(mob, t);
+            
+                  if (d === "l" || d === "r") {
+                    mob.owc(d);
+                    mob.jmp = !1;
+                  } else if (d === "bs") {
+                    mob.gnd = !0;
+                    mob.jmp = !1;
+                  }
                 }
               }
             }
@@ -1396,37 +1586,37 @@
       }
 
       for (i = 0; i < projs.length; i++) {
-        projs[i].updt();
+        projs[i].update();
       }
 
       for ( xp = 0; xp < mapw; xp++) {
         for ( yp = 0; yp < maph; yp++) {
 
-          var tl = tls[xp][yp];
+          var tile = tiles[xp][yp];
 
-          if (tl) {
-            if (tl.i == lava) {
+          if (tile) {
+            if (tile.i == lava) {
               var args = {
                 canFlip:true,
                 destructible:false,
                 collidable:false
               };
               
-              if (xp-1 > 0) {
-                if (!tls[xp-1][yp]) {
-                  tls[xp-1][yp] = new T((xp-1)*ts,yp*ts,lava,args);
+              if (xp-1 >= 0) {
+                if (!tiles[xp-1][yp]) {
+                  tiles[xp-1][yp] = new Tile((xp-1)*tileSize,yp*tileSize,lava,args);
                 }
               }
 
               if (xp+1 < mapw) {
-                if (!tls[xp+1][yp]) {
-                  tls[xp+1][yp] = new T((xp+1)*ts,yp*ts,lava,args);
+                if (!tiles[xp+1][yp]) {
+                  tiles[xp+1][yp] = new Tile((xp+1)*tileSize,yp*tileSize,lava,args);
                 }
               }
 
               if (yp+1 < maph) {
-                if (!tls[xp][yp+1]) {
-                  tls[xp][yp+1] = new T(xp*ts,(yp+1)*ts,lava,args);
+                if (!tiles[xp][yp+1]) {
+                  tiles[xp][yp+1] = new Tile(xp*tileSize,(yp+1)*tileSize,lava,args);
                 }
               }
             }
@@ -1434,22 +1624,42 @@
         }
       }
 
-      for ( xp = sc.lf; xp < sc.lf + sc.w; xp++) {
-        for ( yp = sc.tp; yp < sc.tp + sc.h; yp++) {
+      for ( xp = snc.lf; xp < snc.lf + snc.w; xp++) {
+        for ( yp = snc.tp; yp < snc.tp + snc.h; yp++) {
 
-          if (xp >= 0 && xp < mapw &&
-            yp >= 0 && yp < maph) {
+          if (tileWithinMap(xp, yp)) {
                 
-            tl = tls[xp][yp];
+            tile = tiles[xp][yp];
               
-            if (tl !== null) {
+            if (tile !== null) {
 
-              if (tl.collidable) {
-                d = colCheck(player, tl);
+              if (tile.i == spcship) {
+                if (player.ecrystal > 0) {
+                  if (distance(
+                    player.x,
+                    player.y,
+                    tile.x,
+                    tile.y
+                  ) < 32) {
+
+                    tile.dmg = 100;
+
+                    spaceship = new Spaceship(xp*tileSize, yp*tileSize, tileSize, tileSize, spcship);
+                    spaceship.ay = -0.01;
+
+                    player.visible=false;
+                    camera.moveTo(spaceship.x, spaceship.y);
+                    hasLaunched = true;
+                  }
+                }
+              }
+
+              if (tile.collidable) {
+                d = colCheck(player, tile);
 
                 var dmg = 0.05;
 
-                if (tl.i == rockblue) {
+                if (tile.i == rockblue) {
                   dmg = 0.5;
                 }
 
@@ -1457,16 +1667,15 @@
                   player.vx = 0;
                   player.jmp = !1;
                   player.anim.d=9999;
-                  drill();
-                  tl.hit(dmg);
+
+                  tile.hit(dmg);
 
                 } else if (d === "bs") {
                   player.gnd = !0;
                   player.jmp = !1;
 
                   if (player.drlg) {
-                    drill();
-                    tl.hit(dmg);
+                    tile.hit(dmg);
                   }
 
                   if (player.vy > 8) {
@@ -1478,120 +1687,140 @@
                 }
               }
 
-              if (tl.damage) {
-                if (colRect(player, tl)) {
-                  player.damage(tl.damage);
+              if (tile.damage != null) {
+                if (colRect(player, tile)) {
+                  player.damage(tile.damage);
                 }
               }
               
-              if (tl.dmg > 0) {
-                tl.dmg -= 0.001;
+              if (tile.dmg > 0) {
+                tile.dmg -= 0.001;
               }
               
-              if (tl.dmg >= 1) {
+              if (tile.dmg >= 1) {
 
-                if (tl.i == rockblue) {
+                if (tile.i == rockblue) {
                   player.ammo += 1;
                 }
-                else if (tl.i == oiron) {
+                else if (tile.i == oiron) {
                   var amt = 1;
                   amt = rint(0,100)>80?rint(2,3):amt;
                   player.iron += amt;
                 }
-                else if (tl.i == lifecanister) {
+                else if (tile.i == lifecanister) {
                   player.maxhp += 1;
                   player.hp = player.maxhp;
                 }
-                else if (tl.i == ecrystal) {
+                else if (tile.i == ecrystal) {
                   player.ecrystal += 1;
                 }
 
-                tls[xp][yp] = null;
-              }
-            }
-
-            var ftl = ftls[xp][yp];
-            if (ftl) {
-              if (ftl) {
-                if (ftl.i == spcship) {
-                  if (player.ecrystal > 0) {
-                    if (distance(
-                      player.x,
-                      player.y,
-                      ftl.x,
-                      ftl.y
-                    ) < 256) {
-
-                      player.vis=false;
-                      camera.moveTo(ftl.x, ftl.y);
-                    }
-                  }
-                }
+                tiles[xp][yp] = null;
               }
             }
           }
         }
       }
 
-      ps[0].x = clamp(ps[0].x, 0, (mapw*ts)-ps[0].w);
-      ps[0].y = clamp(ps[0].y, 0, (maph*ts)-ps[0].h);
+      players[0].x = clamp(players[0].x, 0, (mapw*tileSize)-players[0].w);
+      players[0].y = clamp(players[0].y, 0, (maph*tileSize)-players[0].h);
 
-      ppos= { x: ps[0].x, y: ps[0].y };
-      cam.moveTo(ppos.x, ppos.y);
-      cam.vp.lf = clamp(cam.vp.lf, 0, (mapw*ts) - cam.vp.w);
-      cam.vp.tp = clamp(cam.vp.tp, 0, (maph*ts) - cam.vp.h);
+      if (hasLaunched) {
+        if (spaceship) {
+          camera.moveTo(spaceship.x, spaceship.y);
 
-      for ( xp = 0; xp < btls.length; xp++) {
+          var colors = [
+            "#ffb012",
+            "#ffb012",
+            "#ffffff"
+          ]
+          var color = colors[rint(0, colors.length - 1)];
+          var size = rint(2, 16);
 
-        for( yp=0;yp<btls[xp].length;yp++){
+          for (var i = 0; i < 4; i++) {
+            var part = new Part(
+              rint(spaceship.x - 4, spaceship.x + spaceship.w - 8),
+              rint(spaceship.y + spaceship.h, spaceship.y + spaceship.h + 32),
+              size,
+              size,
+              null,
+              color
+            );
+            part.delay = 15;
+            part.vy = rint(0, 5);
+            parts.push(part);
+          }
+        }
+      }
+      else {
+        ppos= { x: players[0].x, y: players[0].y };
+        camera.moveTo(Math.round(ppos.x), Math.round(ppos.y));
+      }
+      camera.vp.lf = clamp(camera.vp.lf, 0, (mapw*tileSize) - camera.vp.w);
+      camera.vp.tp = clamp(camera.vp.tp, 0, (maph*tileSize) - camera.vp.h);
 
-          if (b(btls[xp][yp])) {
-            bg=btls[xp][yp];
+      for ( xp = 0; xp < bgTiles.length; xp++) {
 
-            if (cam.vp.lf > 0 && cam.vp.lf < (mapw*ts)-cam.vp.w) {
-              bg.x += player.vx * 0.75;
+        for( yp=0;yp<bgTiles[xp].length;yp++){
+
+          if (b(bgTiles[xp][yp])) {
+            bg=bgTiles[xp][yp];
+
+            if (!hasLaunched) {
+              if (camera.vp.lf > 0 && camera.vp.lf < (mapw*tileSize)-camera.vp.w) {
+                bg.x += player.vx * bgParallax;
+              }
             }
           }
         }
       }
     }
   }
-  function drw(x){
+  function draw(ctx){
 
-    x.clearRect(0,0,w,h - 4);
+    ctx.clearRect(0,0,w,h - 4);
 
-    cam.begin();
+    if (worldTemplate.hasSky) {
+      ctx.fillStyle = worldTemplate.skyColor;
+      ctx.fillRect(0, 0, w, h);
+    }
 
+    for ( i = 0; i < clouds.length; i++) {
+      var cloud = clouds[i];
 
-    cc = { x: cam.vp.lf, y: cam.vp.tp, w: cam.vp.w, h: cam.vp.h };
-    sc = {
-      lf: sgf(cc.x, ts)/ts,
-      tp: sgf(cc.y, ts)/ts,
-      w: (sgf(cam.vp.w, ts)/ts)+2,
-      h: (sgf(cam.vp.h, ts)/ts)+2
+      cloud.draw(ctx);
+    }
+
+    camera.begin();
+
+    wcam = { x: camera.vp.lf, y: camera.vp.tp, w: camera.vp.w, h: camera.vp.h };
+    snc = {
+      lf: sgf(wcam.x, tileSize)/tileSize,
+      tp: sgf(wcam.y, tileSize)/tileSize,
+      w: (sgf(camera.vp.w, tileSize)/tileSize)+2,
+      h: (sgf(camera.vp.h, tileSize)/tileSize)+2
     };
 
     scBg = {
-      lf: sgf(cc.x, bs)/bs,
-      tp: sgf(cc.y, bs)/bs,
-      w: (sgf(cam.vp.w, bs)/bs)+2,
-      h: (sgf(cam.vp.h, bs)/bs)+2
+      lf: sgf(wcam.x, bgTileSize)/bgTileSize,
+      tp: sgf(wcam.y, bgTileSize)/bgTileSize,
+      w: (sgf(camera.vp.w, bgTileSize)/bgTileSize)+2,
+      h: (sgf(camera.vp.h, bgTileSize)/bgTileSize)+2
     };
 
     for ( xp = 0; xp < mapw; xp++) {
       for ( yp = scBg.tp; yp < scBg.tp + scBg.h; yp++) {
 
-        if (xp >= 0 && xp < mapw &&
-          yp >= 0 && yp < maph) {
+        if (tileWithinMap(xp, yp)) {
 
-          tl = btls[xp][yp];
+          tile = bgTiles[xp][yp];
 
-          if (b(tl)) {
-            if (tl.x > cc.x - bs && tl.x < cc.x + cc.w &&
-              tl.y > cc.y - bs && tl.y < cc.y + cc.h) {
+          if (b(tile)) {
+            if (tile.x > wcam.x - bgTileSize && tile.x < wcam.x + wcam.w &&
+              tile.y > wcam.y - bgTileSize && tile.y < wcam.y + wcam.h) {
 
-              if (tl !== null) {
-                tl.drw(x);
+              if (tile !== null) {
+                tile.draw(ctx);
               }
             }
           }
@@ -1599,94 +1828,112 @@
       }
     }
 
-    for ( xp = sc.lf - 2; xp < sc.lf + sc.w + 2; xp++) {
-      for ( yp = sc.tp - 2; yp < sc.tp + sc.h + 2; yp++) {
+    for ( xp = snc.lf - 2; xp < snc.lf + snc.w + 2; xp++) {
+      for ( yp = snc.tp - 2; yp < snc.tp + snc.h + 2; yp++) {
 
-        if (xp >= 0 && xp < mapw &&
-            yp >= 0 && yp < maph) {
+        if (tileWithinMap(xp, yp)) {
 
-          tl = tls[xp][yp];
-          al_tl = al_tls[xp][yp];
-          fg_tl = ftls[xp][yp];
+          tile = tiles[xp][yp];
+          alwaysLoadedTile = alwaysLoadedTiles[xp][yp];
+          fgTile = fgTiles[xp][yp];
 
-          if (tl !== undefined && tl !== null) {
-            tl.drw(x);
+          if (tile !== undefined && tile !== null) {
+            tile.draw(ctx);
           }
 
-          if (al_tl !== undefined && al_tl !== null) {
-            al_tl.drw(x);
+          if (alwaysLoadedTile !== undefined && alwaysLoadedTile !== null) {
+            alwaysLoadedTile.draw(ctx);
           }
 
-          if (fg_tl !== undefined && fg_tl !== null) {
-            fg_tl.drw(x);
+          if (fgTile !== undefined && fgTile !== null) {
+            fgTile.draw(ctx);
           }
         }
       }
     }
 
-    for(i=0;i<ps.length;i++){
-      ps[i].drw(x);
+    if (spaceship) {
+      spaceship.draw(ctx);
+    }
+
+    for(i=0;i<parts.length;i++) {
+      parts[i].draw(ctx);
+    }
+
+    for(i=0;i<players.length;i++){
+      players[i].draw(ctx);
     }
 
     for(i=0;i<mobs.length;i++){
-      mobs[i].drw(x);
+      mobs[i].draw(ctx);
     }
 
     for (i=0;i<projs.length;i++){
-      projs[i].drw(x);
+      projs[i].draw(ctx);
     }
 
-    cam.end();
+    camera.end();
 
-    for (var i = 0; i < ps[0].maxhp; i++) {
-      x.drawImage(heartempty, 32 + (i * 32), 32, 32, 32);
-      if (i < ps[0].hp) {
-        x.drawImage(heart, 32 + (i * 32), 32, 32, 32);
+    for (var i = 0; i < players[0].maxhp; i++) {
+      ctx.drawImage(heartempty, 32 + (i * 32), 32, 32, 32);
+      if (i < players[0].hp) {
+        ctx.drawImage(heart, 32 + (i * 32), 32, 32, 32);
       }
     }
 
     var inv = [
-      { icon: ecrystal, text: ps[0].ecrystal },
-      { icon: plasma_ball, text: ps[0].ammo },
-      { icon: oiron, text: ps[0].iron }
+      { icon: ecrystal, text: players[0].ecrystal + "/9" },
+      { icon: plasmaball, text: players[0].ammo },
+      { icon: oiron, text: players[0].iron }
     ];
 
     for (var i = 0; i < inv.length; i++) {
       var item = inv[i];
-      x.drawImage(item.icon, 32, 80 + (i * 48), 32, 32);
+      ctx.drawImage(item.icon, 32, 80 + (i * 48), 32, 32);
 
-      x.save();
-      x.font = "bold 24px monospace";
-      x.fillStyle = "#fff";
-      x.fillText(item.text, 72, 106 + (i * 48));
-      x.restore();
+      ctx.save();
+      ctx.font = "bold 24px monospace";
+      ctx.fillStyle = "#fff";
+      ctx.fillText(item.text, 72, 106 + (i * 48));
+      ctx.restore();
     }
 
-    if (ps[0].dead) {
-      x.save();
-      x.fillStyle = "#111";
-      x.fillRect(0, 240, w, 128);
-      x.fillStyle = "#fff";
-      x.font = "32px monospace";
-      var youdied="You Died. :c";
-      x.fillText(youdied, (w/2)-x.measureText(youdied).width/2, 310);
-      x.font = "14px monospace";
-      var torestart="A new game will start in a sec...";
-      x.fillText(torestart, (w/2)-x.measureText(torestart).width/2, 340);
-      x.restore();
+    var message = "";
+    var restartMessage = "";
+
+    if (players[0].dead) {
+      message = "You died. :c";
+      restartMessage="A new game will start in a sec...";
+    }
+
+    if (hasLaunched && spaceship.y < 0) {
+      message = "You're on your way to orbit!";
+      restartMessage="Reload to run out of fuel and crash again.";
+    }
+
+    if (restartMessage != "") {
+      ctx.save();
+      ctx.fillStyle = "#111";
+      ctx.fillRect(0, 240, w, 128);
+      ctx.fillStyle = "#fff";
+      ctx.font = "32px monospace";
+      ctx.fillText(message, (w/2)-ctx.measureText(message).width/2, 310);
+      ctx.font = "14px monospace";
+      ctx.fillText(restartMessage, (w/2)-ctx.measureText(restartMessage).width/2, 340);
+      ctx.restore();
     }
 
   }
   function ml() {
-    updt();
-    drw(x);
+    update();
+    draw(ctx);
     requestAnimationFrame(ml);
   }
   ael=addEventListener;
   ael('DOMContentLoaded',(e)=>{
     init();
 
-    cam.zoomTo(200);
+    camera.zoomTo(300);
     ml();
   });
   ael('keydown',e=>{
@@ -1697,4 +1944,4 @@
     c=e.keyCode||e.which;
     k[c]=0;
   });
-})();
+})(this);

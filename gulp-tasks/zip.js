@@ -12,10 +12,13 @@ module.exports = function() {
     gulp.task('zip', function () {
         return gulp.src(config.destinationRoot + zipConfig.source)
             .pipe(inlinesource({
-                compress: false
+                compress: true
             }))
             .pipe(zip(zipConfig.filename))
-            .pipe(advzip({ optimizationLevel: 4 }))
+            .pipe(advzip({
+                optimizationLevel: 4,
+                iterations: 10
+            }))
             .pipe(gulp.dest(zipConfig.destination))
             .pipe(checkFileSize({
                 fileSizeLimit: 16384

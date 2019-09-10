@@ -6,7 +6,6 @@ module.exports = function() {
     const notify = require('gulp-notify');
     const gulpif = require('gulp-if');
     const terser = require('gulp-terser');
-    const uglify = require('gulp-uglify-es');
     const browserSync = require('browser-sync');
 
     const isWatching = ['serve', 'watch'].indexOf(process.argv[2]) >= 0;
